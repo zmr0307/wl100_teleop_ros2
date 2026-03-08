@@ -23,6 +23,8 @@
 - **核心依赖**：
   - `rclpy` (ROS2 Python 客户端库)
   - `geometry_msgs` (标准消息库)
+  - `nav_msgs` (里程计 Odometry 消息，v3.0 新增)
+  - `tf2_ros` (TF 变换广播，v3.0 新增)
   - `pyserial` (Python 串口通信库，当前已全局安装 v3.5)
   - `ros-humble-teleop-twist-keyboard` (用于键盘控制测试)
 
@@ -34,27 +36,55 @@
 - **核心节点文件**：`src/wl100_teleop/wl100_teleop/serial_node.py`
 - **执行入口**：`ros2 run wl100_teleop serial_node` （支持动态传参：`--ros-args -p port_name:=/dev/ttyUSB0 -p baudrate:=115200`）
 
-## 4. 通信协议标准（Jetson -> STM32）
+## 4. 通信协议标准
+
+### 4.1 Jetson -> STM32 下发协议（10 字节固定帧）
 
 - **波特率**：`115200 bps`
 - **订阅话题**：`/cmd_vel` (`geometry_msgs/msg/Twist`)
 - **速度安全锁**：代码层面实施了严格的**软限幅 `±0.2 m/s` (平移) 及 `±0.2 rad/s` (旋转)**。
-- **自定义 10 字节串口协议帧格式**：
-  - 格式：`[帧头1] [帧头2] [Vx_H] [Vx_L] [Vy_H] [Vy_L] [Vz_H] [Vz_L] [XOR校验] [帧尾]`
-  - `Byte 0`: `0xA5`
-  - `Byte 1`: `0x5A`
-  - `Byte 2~7`: Vx, Vy, Vz，单位放大 1000 倍，使用 **大端序 (Big Endian) 16位有符号整型 (int16)**。
-  - `Byte 8`: XOR 校验和，计算范围为 `Byte 0` 到 `Byte 7` 的累积异或。
-  - `Byte 9`: `0xEE`
-  - *紧急刹车帧（全0速度）已硬编码并在退出时下发：* `0xA5 0x5A 0x00 0x00 0x00 0x00 0x00 0x00 0xFF 0xEE`
+- **帧格式**：`[A5] [5A] [Vx_H] [Vx_L] [Vy_H] [Vy_L] [Vz_H] [Vz_L] [XOR] [EE]`
+  - `Byte 2~7`: Vx, Vy, Vz，单位放大 1000 倍，**大端序 int16**。
+  - `Byte 8`: XOR 校验和（Byte 0~7 累积异或）。
+  - *紧急刹车帧：* `0xA5 0x5A 0x00 0x00 0x00 0x00 0x00 0x00 0xFF 0xEE`
 
-## 5. 当前工程状态与已知里程碑 (2026-03-06)
+### 4.2 STM32 -> Jetson 回传协议（11 字节固定帧，v3.0 新增解析）
 
-- **代码健壮性**：`serial_node.py` 已完成至少 6 轮严谨的审查与重构。
-  - 已彻底解决 `rclpy` 退出时的 `rosout context invalid` 问题（使用了最严格的 `try...except...finally` 最佳实践隔离日志与节点清理过程）。
-  - 已解决 `pyserial` 偶尔丢失引发的节点初始化中断问题（加入了 `hasattr` 安全锁）。
-  - `colcon build` 编译完美通过。
-- **下一步行动点（TODO）**：
-  - [ ] **连线实测**：将 Jetson 与 STM32 通过 USB-TTL 正式物理连接。
-  - [ ] **启动测试**：分别运行 `ros2 run wl100_teleop serial_node` 和键盘节点，观察小车底盘是否正常接收 10 字节指令并以安全限幅低速移动。
-  - [ ] **开发回传回路（未来扩展）**：当前节点仅支持向 STM32 **发送**速度指令，未来需要增加解析 STM32 回传给 Jetson 的传感器数据（如里程计、电池状态），并发布为对应的 ROS2 Topic。
+- **帧格式**：`[AA] [55] [TYPE] [Vx_H] [Vx_L] [Vy_H] [Vy_L] [Vz_H] [Vz_L] [XOR] [EE]`
+  - `TYPE = 0x01`：里程计速度数据（50Hz 上报）
+  - `TYPE = 0x02`：电池状态数据（预留，尚未实现）
+  - `Byte 3~8`: Vx, Vy, Vz，单位放大 1000 倍，**大端序 int16**。
+  - `Byte 9`: XOR 校验和（Byte 0~8 共 9 字节累积异或）。
+- **Jetson 端解析方式**：后台接收线程滑窗搜帧 + 三道校验（帧头/帧尾/XOR）
+- **发布话题**：`/odom` (`nav_msgs/msg/Odometry`) + TF 广播 (`odom` → `base_link`)
+
+- **硬件连线状态 (2026-03-08 更新)**：
+  - 加载了 WCH 原厂 CH341 驱动，USB-TTL 设备名从标准的 `/dev/ttyUSB0` 变为 **`/dev/ttyCH341USB0`** (或 USB1)。
+  - 彻底卸载了干扰串口的系统服务 `brltty`。
+  - 已将当前用户 `nvidia` 加入 `dialout` 组，解决了串口永久访问权限问题。
+
+## 5. 当前工程状态与已知里程碑 (2026-03-08)
+
+- **通信链路打通**：成功解决 Jetson 内核缺失 CH340/CH341 驱动的问题，通过源码编译实现了串口通信闭环。
+- **可视化调试增强**：`serial_node.py` 已集成"三位一体"日志监控，并实现了智能节流打印。
+- **v2.0 工程化重构 (2026-03-08)**：实现了参数化限速、串口断线非阻塞自动重连、以及 int16 溢出保护逻辑。
+- **工程化规范确立**：建立了 `/home/nvidia/robot_ws/JETSON_RULES.md` 铁律文档，确立了 15 条机器人开发核心准则。
+- **v3.0 回传与里程计 (2026-03-08)**：新增后台接收线程解析 STM32 回传的 `AA 55 01` 里程计帧，实现死区推算积分并发布 `/odom` 话题与 `odom→base_link` TF 变换。引入看门狗联动机制，底盘失联时自动冻结运动指令。colcon build 编译通过，零警告。
+
+## 6. v3.0 新增 ROS2 参数清单
+
+| 参数名 | 类型 | 默认值 | 用途 |
+|--------|------|--------|------|
+| `watchdog_timeout` | double | `0.5` | 回传超时阈值（秒） |
+| `odom_frame_id` | string | `odom` | 里程计父坐标系 |
+| `base_frame_id` | string | `base_link` | 机器人基座坐标系 |
+| `rx_buffer_max` | int | `256` | 接收缓冲区字节上限 |
+
+## 7. 下一步行动点（TODO）
+
+- [x] **代码优化：断线自愈**：已在 v2.0 版本中完成。
+- [x] **开发回传回路（里程计）**：v3.0 已实现 TYPE=0x01 里程计解析、积分与 /odom 发布。
+- [ ] **回传实车联调验证**：需连接 STM32 实车，验证 /odom 数据与底盘真实运动的方向和数值一致性。
+- [ ] **回传扩展：电池状态 (TYPE=0x02)**：解析 STM32 上报的 SOC、电压、电流、故障码。
+- [ ] **物理压力测试**：验证在长时间运行和频繁插拔下的稳定性。
+- [ ] **工程化部署**：编写 `systemd` 脚本实现开机自启。
