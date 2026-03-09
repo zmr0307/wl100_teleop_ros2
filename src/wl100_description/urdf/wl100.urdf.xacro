@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<!-- WL100 全向轮底盘 URDF 描述文件 -->
+<!-- TODO: 明天根据实际测量尺寸填写具体参数 -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="wl100">
+
+  <!-- ==================== 尺寸参数（待测量填入）==================== -->
+  <!-- 底盘尺寸 (米) -->
+  <xacro:property name="chassis_length" value="0.30" />   <!-- TODO: 实测 -->
+  <xacro:property name="chassis_width"  value="0.30" />   <!-- TODO: 实测 -->
+  <xacro:property name="chassis_height" value="0.10" />   <!-- TODO: 实测 -->
+
+  <!-- 雷达安装位置 — 相对于 base_link 中心 (米) -->
+  <xacro:property name="lidar_x" value="0.0" />           <!-- TODO: 前后偏移 -->
+  <xacro:property name="lidar_y" value="0.0" />           <!-- TODO: 左右偏移 -->
+  <xacro:property name="lidar_z" value="0.15" />          <!-- TODO: 离底盘顶面高度 -->
+
+  <!-- ==================== base_footprint ==================== -->
+  <link name="base_footprint"/>
+
+  <joint name="base_footprint_to_base_link" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${chassis_height/2}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== base_link (底盘) ==================== -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+      <material name="dark_grey">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== LiDAR-L2 (激光雷达) ==================== -->
+  <joint name="base_link_to_lidar" type="fixed">
+    <parent link="base_link"/>
+    <child link="unilidar_lidar"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${chassis_height/2 + lidar_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="unilidar_lidar">
+    <visual>
+      <geometry>
+        <cylinder radius="0.0375" length="0.065"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- ==================== IMU (雷达内置) ==================== -->
+  <!-- IMU 与点云坐标系仅有微小平移偏差，由雷达 SDK 内部发布 TF -->
+  <!-- 此处不单独定义 unilidar_imu link，由 SDK 节点负责 -->
+
+  <!-- ==================== 全向轮 (TODO: 后续补充) ==================== -->
+  <!-- wheel_front_left, wheel_front_right, wheel_back_left, wheel_back_right -->
+
+</robot>

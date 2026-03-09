@@ -1,0 +1,22 @@
+# WL100 底盘串口通信参数
+# TODO: 根据实际硬件确认参数值
+
+/**:
+  ros__parameters:
+    # 串口配置
+    port_name: "/dev/ttyCH341USB0"
+    baudrate: 115200
+
+    # 速度安全限幅
+    max_linear_velocity: 0.2    # m/s
+    max_angular_velocity: 0.2   # rad/s
+
+    # 看门狗
+    watchdog_timeout: 0.5       # 秒
+
+    # 坐标系
+    odom_frame_id: "odom"
+    base_frame_id: "base_link"
+
+    # 接收缓冲
+    rx_buffer_max: 256

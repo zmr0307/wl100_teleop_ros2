@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>wl100_bringup</name>
+  <version>0.1.0</version>
+  <description>WL100 机器人统一启动包 — launch 文件和参数配置</description>
+  <maintainer email="nvidia@nvidia-desktop.local">nvidia</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- 启动依赖 -->
+  <exec_depend>wl100_description</exec_depend>
+  <exec_depend>wl100_teleop</exec_depend>
+  <!-- unitree_lidar_ros2 在独立工作区编译，运行时需额外 source 其 setup.bash -->
+  <!-- <exec_depend>unitree_lidar_ros2</exec_depend> -->
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
+  <!-- 未来扩展 -->
+  <!-- <exec_depend>slam_toolbox</exec_depend> -->
+  <!-- <exec_depend>nav2_bringup</exec_depend> -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
