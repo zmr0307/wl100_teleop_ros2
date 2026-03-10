@@ -49,7 +49,7 @@ protected:
     // ROS
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_cloud_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_;
-    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr pub_imu_temp_;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr pub_temp_;
     rclcpp::TimerBase::SharedPtr timer_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster_;
 
@@ -154,7 +154,7 @@ UnitreeLidarSDKNode::UnitreeLidarSDKNode(const rclcpp::NodeOptions &options)
     broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(*this);
     pub_cloud_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(cloud_topic_, 10);
     pub_imu_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 10);
-    pub_imu_temp_ = this->create_publisher<sensor_msgs::msg::Temperature>("unilidar/imu_temperature", 10);
+    pub_temp_ = this->create_publisher<sensor_msgs::msg::Temperature>("unilidar/temperature", 10);
     timer_ = this->create_wall_timer(std::chrono::milliseconds(1), std::bind(&UnitreeLidarSDKNode::timer_callback, this));
 }
 
@@ -240,14 +240,14 @@ void UnitreeLidarSDKNode::timer_callback()
 
             pub_cloud_->publish(cloud_msg);
 
-            // 发布 IMU 温度
+            // 发布 APD 温度（可靠的板载温度参考）
             auto& pkt = lsdk_->getLidarPointDataPacket();
             sensor_msgs::msg::Temperature temp_msg;
             temp_msg.header.stamp = timestamp;
-            temp_msg.header.frame_id = imu_frame_;
-            temp_msg.temperature = pkt.data.state.imu_temperature;
+            temp_msg.header.frame_id = cloud_frame_;
+            temp_msg.temperature = pkt.data.state.apd_temperature;
             temp_msg.variance = 0.0;
-            pub_imu_temp_->publish(temp_msg);
+            pub_temp_->publish(temp_msg);
         }
     }
 }

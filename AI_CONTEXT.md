@@ -49,7 +49,9 @@
   ├── wl100_description/   # 机器人 URDF 描述包
   ├── wl100_bringup/       # 统一启动 + 参数配置包
   ├── wl100_teleop/        # 底盘串口通信节点
-  └── unilidar_sdk2/       # 雷达 SDK（独立 colcon 工作区）
+  ├── unilidar_sdk2/       # 雷达 SDK（独立 colcon 工作区）
+  ├── FAST_LIO_ROS2/       # FAST-LIO2 建图算法 (2026-03-10 新增)
+  └── point_lio_ros2/      # Point-LIO 建图算法 (2026-03-10 新增)
   ```
 
 ### 3.1 底盘通信功能包 (wl100_teleop)
@@ -72,11 +74,63 @@
 - **发布话题**：
   - `/unilidar/cloud` (`sensor_msgs/PointCloud2`)：3D 点云，~12 Hz，坐标系 `unilidar_lidar`
   - `/unilidar/imu` (`sensor_msgs/Imu`)：IMU 数据，~246 Hz，坐标系 `unilidar_imu`
+  - `/unilidar/temperature` (`sensor_msgs/Temperature`)：APD 探测器板载温度，~12 Hz（2026-03-11 新增）
   - `/tf`：IMU 初始 → IMU 实时、IMU → 点云 坐标变换
 - **关键参数**：`initialize_type:=2`（UDP 模式）、`lidar_ip`、`local_ip`、`lidar_port`、`local_port`
 - **⚠️ 注意**：确保启动前无残留雷达进程占用 UDP 6201 端口，否则会出现 `bind failed` 和 `WARNING` 刷屏
+- **⚠️ 温度说明**：SDK 中 `imu_temperature` 字段读数固定 ~60 不随环境变化，**不可信**（疑似固件 BUG 或未校准原始值）。改用 `apd_temperature` 作为可靠的板载温度参考（冷机 ~45°C，运行后逐渐上升至 ~55°C）。
 
-### 3.3 机器人描述包 (wl100_description)
+### 3.3 SLAM 建图算法包 (2026-03-10~11 新增)
+
+#### 3.3.1 FAST-LIO2 (`FAST_LIO_ROS2/`)
+
+- **来源**：hku-mars/FAST_LIO ROS2 移植版
+- **包名**：`fast_lio`
+- **配置文件**：`config/unilidar_l2.yaml`
+- **Launch 文件**：`launch/mapping_unilidar_l2.launch.py`
+- **关键参数**：
+  - `lid_topic: /unilidar/cloud`、`imu_topic: /unilidar/imu`
+  - `lidar_type: 2`（Velodyne 兼容模式，L2 标准 PointCloud2）
+  - `scan_line: 18`、`timestamp_unit: 0`（秒）
+  - `acc_cov: 1.0`、`gyr_cov: 0.3`（针对 L2 旋转电机振动调优）
+  - `extrinsic_T: [0.007698, 0.014655, -0.00667]`（官方标定值，LiDAR pose in IMU frame）
+  - `extrinsic_est_en: false`（外参在线估计关闭）
+  - `map_file_path: /home/nvidia/robot_ws/PCD/fastlio_scans.pcd`
+- **TF 帧名**：`camera_init`（世界原点）→ `body`（IMU 位姿）
+- **发布话题**：`/Odometry`、`/cloud_registered`、`/Laser_map`、`/path`
+- **特性**：角度（Yaw）稳定性极好，但 Z 方向有 5~13cm 漂移（旋转电机振动导致重力估计偏差）
+
+#### 3.3.2 Point-LIO (`point_lio_ros2/`)
+
+- **来源**：[dfloreaa/point_lio_ros2](https://github.com/dfloreaa/point_lio_ros2)（ROS2 Humble 移植 + Unitree L2 支持）
+- **包名**：`point_lio`
+- **配置文件**：`config/unilidar_l2.yaml`
+- **Launch 文件**：`launch/mapping_unilidar_l2.launch.py`
+- **关键参数**：
+  - `extrinsic_T: [0.007698, 0.014655, -0.00667]`（LiDAR pose in IMU frame）
+  - 外参约定：README 明确为 "LiDAR's pose in IMU body frame"
+- **TF 帧名**：`camera_init`（世界原点）→ `aft_mapped`（LiDAR 位姿）
+- **特性**：Z 轴稳定性极好（静止漂移 ~10mm），但 Yaw 轴严重自转（旋转电机振动导致角速度积分发散）
+
+#### 3.3.3 两算法对比测试结果 (2026-03-11)
+
+| 指标 | FAST-LIO2 | Point-LIO |
+| ---- | --------- | --------- |
+| **Z 轴漂移（静止）** | ❌ 50~133mm | ✅ ~10mm |
+| **Yaw 漂移（静止）** | ✅ 1~2° | ❌ 持续自转（160°+） |
+| **建图可用性** | ✅ 地图方向稳定可用 | ❌ 地图原地旋转 |
+| **推荐场景** | 当前硬件条件的最优选择 | 需外接独立 IMU |
+
+#### 3.3.4 L2 IMU 硬件限制
+
+- **旋转电机振动（主因）**：静止时加速度噪声标准差 ~0.1 m/s²（理论值 0.003），放大 30 倍。IMU 芯片与旋转电机在同一 PCB 上，振动直接传导
+- **IMU 温度读数不可信**：SDK 中 `imu_temperature` 字段恒定 ~60，不随冷热启动变化，疑似固件 BUG 或未校准原始值。`apd_temperature` 为可靠的板载温度参考（冷机 ~45°C → 稳态 ~55°C）
+- **IMU 数据传输**：发送间隔不规律，影响 SLAM 稳定性
+- **缓解措施**：
+  - FAST-LIO2 增大 `acc_cov`（当前 1.0），依靠点云匹配约束角度
+  - 终极方案：外接独立 IMU（远离旋转电机）或换雷达
+
+### 3.4 机器人描述包 (wl100_description)
 
 - **包类型**：`ament_cmake`
 - **URDF 模型**：`urdf/wl100.urdf.xacro`（xacro 格式，全参数化，官方规格数据 + 实测校准）
@@ -87,7 +141,7 @@
 - **预留目录**：`meshes/`（3D 模型）、`rviz/`（RViz 预设配置）
 - **依赖**：`robot_state_publisher`、`xacro`、`joint_state_publisher`
 
-### 3.4 统一启动包 (wl100_bringup)
+### 3.5 统一启动包 (wl100_bringup)
 
 - **包类型**：`ament_cmake`
 - **launch**：`robot.launch.py`（一键启动：URDF + 底盘节点 + 雷达节点）
@@ -123,7 +177,28 @@
   - 彻底卸载了干扰串口的系统服务 `brltty`。
   - 已将当前用户 `nvidia` 加入 `dialout` 组，解决了串口永久访问权限问题。
 
-## 5. 当前工程状态与已知里程碑
+## 5. LiDAR-IMU 外参标定记录
+
+### 5.1 官方标定值
+
+- **来源**：`unilidar_sdk2` 官方文档 + Point-LIO 官方适配
+- **IMU 原点在 LiDAR 坐标系中的位置**：`[-0.007698, -0.014655, 0.00667]`（SDK 原始值）
+- **LiDAR 原点在 IMU 坐标系中的位置**：`[0.007698, 0.014655, -0.00667]`（取反后）
+- **旋转矩阵**：单位矩阵（LiDAR 和 IMU 轴向对齐）
+
+### 5.2 各算法外参配置
+
+| 算法 | 外参约定 | 配置值 | 验证状态 |
+|------|---------|--------|---------|
+| **FAST-LIO2** | `Lidar_T_wrt_IMU` = LiDAR in IMU frame | `[0.007698, 0.014655, -0.00667]` | ✅ 三方交叉验证 |
+| **Point-LIO** | README: "LiDAR's pose in IMU body frame" | `[0.007698, 0.014655, -0.00667]` | ✅ 官方值 |
+| **雷达驱动 TF** | IMU → LiDAR 变换 | `[0.007698, 0.014655, -0.00667]` | ✅ 与 SDK 一致 |
+
+### 5.3 外参排查实验 (2026-03-11)
+
+通过设置外参为 `[0,0,0]` 排除外参因素，确认 FAST-LIO2 Z 轴漂移（55mm）是旋转电机振动导致的重力方向估计偏差，非外参符号错误。
+
+## 6. 当前工程状态与已知里程碑
 
 - **通信链路打通 (2026-03-08)**：成功解决 Jetson 内核缺失 CH340/CH341 驱动的问题，通过源码编译实现了串口通信闭环。
 - **可视化调试增强**：`serial_node.py` 已集成"三位一体"日志监控，并实现了智能节流打印。
@@ -147,13 +222,20 @@
   - 修复 `chassis_params.yaml` 与代码中参数名不匹配的 BUG（`max_linear_vel` → `max_linear_velocity`）。
   - 补全 YAML 中缺失的 `reconnect_interval` 参数，完善全部注释。
   - 参数清单在代码、YAML、文档三端完全对齐（共 9 项）。
-- **URDF 精确建模 (2026-03-10 最新)**：
+- **URDF 精确建模 (2026-03-10)**：
   - 基于官方产品尺寸图 + 规格参数表 + 实测数据，完成 WL100 底盘的精确 URDF 描述。
   - 车体 box (0.73×0.50×0.245m) + 4 轮 cylinder (R0.10×W0.055m) + 型材支架 (0.66×0.025×0.01m) + 绿色灯带标识车头。
   - LiDAR-L2 两段式建模：Φ75×24mm 圆柱底座 + Φ60×41mm 上半部，尺寸对齐官方 L2 机械尺寸图。
   - 含惯性参数（chassis 75kg + wheel 3kg×4），xacro 解析 + colcon build 零警告。
+- **SLAM 建图算法集成 (2026-03-10~11 最新)**：
+  - 编译适配 FAST-LIO2（去除 Livox 依赖，配置 Velodyne 兼容模式 + L2 参数调优）。
+  - 编译 Point-LIO ROS2（dfloreaa/point_lio_ros2 官方 L2 适配版）。
+  - 修改雷达驱动新增 `/unilidar/imu_temperature` 话题用于 IMU 温度监控。
+  - 完成外参标定值验证（SDK 官方 + Point-LIO README + FAST-LIO2 源码三方交叉确认）。
+  - 完成两算法 Z 轴/Yaw 漂移静态对比测试，确认 FAST-LIO2 为当前最优选择。
+  - 确认 L2 内置 IMU 硬件限制（旋转振动 + 高温漂移），记录缓解措施。
 
-## 6. 完整 ROS2 参数清单
+## 7. 完整 ROS2 参数清单
 
 | 参数名 | 类型 | 默认值 | 用途 |
 |--------|------|--------|------|
@@ -167,24 +249,28 @@
 | `base_frame_id` | string | `base_footprint` | 里程计子坐标系 (REP-105) |
 | `rx_buffer_max` | int | `256` | 接收缓冲区字节上限 |
 
-## 7. 下一步行动点（TODO）
+## 8. 下一步行动点（TODO）
 
 - [x] **代码优化：断线自愈**：已在 v2.0 版本中完成。
 - [x] **开发回传回路（里程计）**：v3.0 已实现 TYPE=0x01 里程计解析、积分与 /odom 发布。
 - [x] **代码解耦模块化**：v3.1 已将通信协议的收发解析逻辑、里程计推算逻辑从 ROS2 主节点中完全抽离。
 - [x] **LiDAR-L2 雷达驱动集成**：网络配置持久化 + SDK 编译 + 点云/IMU 话题验证 + RViz2 可视化确认。
-- [x] **雷达 TF 对接**：URDF 中已定义 `base_link → unilidar_lidar` fixed joint，`robot_state_publisher` 启动后自动发布。雷达安装位置 lidar_x/y/z 待实测确认后填入 xacro 参数。
+- [x] **雷达 TF 对接**：URDF 中已定义 `base_link → unilidar_lidar` fixed joint，`robot_state_publisher` 启动后自动发布。
+- [x] **SLAM 建图算法适配**：FAST-LIO2 + Point-LIO 双算法编译通过、参数调优、外参验证。
+- [x] **IMU 温度监控**：雷达驱动新增 `/unilidar/imu_temperature` 话题，实时监测 IMU 芯片温度。
+- [ ] **实车建图测试**：使用 FAST-LIO2 推车建图，保存 PCD 并评估地图质量。
 - [ ] **统一 Launch 文件验证**：`robot.launch.py` 已编写，需实际启动验证全链路（底盘 + 雷达 + URDF）。
 - [ ] **回传实车联调验证**：需连接 STM32 实车，验证 /odom 数据与底盘真实运动的方向和数值一致性。
 - [ ] **回传扩展：电池状态 (TYPE=0x02)**：解析 STM32 上报的 SOC、电压、电流、故障码。
+- [ ] **导航集成 (Nav2)**：基于 FAST-LIO2 建图结果，集成 Nav2 实现自主导航。
 - [ ] **物理压力测试**：验证在长时间运行和频繁插拔下的稳定性。
 - [ ] **工程化部署**：编写 `systemd` 脚本实现开机自启。
 
-## 8. 常用运行指令 (Quick Start)
+## 9. 常用运行指令 (Quick Start)
 
 为了确保节点正常运行，每次启动前请按照以下标准流程执行：
 
-### 8.1 编译与环境初始化
+### 9.1 编译与环境初始化
 
 ```bash
 cd /home/nvidia/robot_ws
@@ -192,7 +278,7 @@ colcon build --packages-select wl100_teleop
 source install/setup.bash
 ```
 
-### 8.2 标准启动指令 (默认使用 CH341 驱动串口)
+### 9.2 标准启动指令 (默认使用 CH341 驱动串口)
 
 ```bash
 ros2 run wl100_teleop serial_node --ros-args -p port_name:=/dev/ttyCH341USB0 -p baudrate:=115200
@@ -200,26 +286,28 @@ ros2 run wl100_teleop serial_node --ros-args -p port_name:=/dev/ttyCH341USB0 -p 
 
 *提示：如果使用普通 USB-TTL 模块，请将 `port_name:=/dev/ttyUSB0`*
 
-### 8.3 LiDAR-L2 雷达启动指令
+### 9.3 LiDAR-L2 雷达启动指令
 
 ```bash
-# 编译（首次或代码变更后）
-cd /home/nvidia/robot_ws/src/unilidar_sdk2/unitree_lidar_ros2
-colcon build
-
-# 启动雷达节点
-source install/setup.bash
+cd /home/nvidia/robot_ws && source /opt/ros/humble/setup.bash && source install/setup.bash
 ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
-  -p initialize_type:=2 \
-  -p lidar_ip:="192.168.1.62" \
-  -p local_ip:="192.168.1.2" \
-  -p lidar_port:=6101 \
-  -p local_port:=6201
+  --params-file /home/nvidia/robot_ws/src/wl100_bringup/config/lidar_params.yaml
 ```
 
 *⚠️ 启动前确保无残留雷达进程：`ps aux | grep unitree`，如有则先 `killall -9 unitree_lidar_ros2_node`*
 
-### 8.4 辅助调试指令
+### 9.4 SLAM 建图指令
+
+```bash
+# FAST-LIO2（推荐）
+cd /home/nvidia/robot_ws && source /opt/ros/humble/setup.bash && source install/setup.bash
+ros2 launch fast_lio mapping_unilidar_l2.launch.py
+
+# Point-LIO（备选，需外接独立 IMU 才可用）
+ros2 launch point_lio mapping_unilidar_l2.launch.py
+```
+
+### 9.5 辅助调试指令
 
 * **键盘控制测试**：
 
@@ -227,28 +315,31 @@ ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
   ros2 run teleop_twist_keyboard teleop_twist_keyboard
   ```
 
-* **查看里程计数据回传**：
+* **查看板载温度（APD）**：
 
   ```bash
-  ros2 topic echo /odom
+  ros2 topic echo /unilidar/temperature --field temperature
   ```
 
-* **实时查看坐标变换 (TF)**：
+* **查看 IMU 加速度（诊断抖动）**：
 
   ```bash
-  ros2 run tf2_ros tf2_echo odom base_link
+  ros2 topic echo /unilidar/imu --field linear_acceleration
+  ```
+
+* **TF 变换查看**：
+
+  ```bash
+  # FAST-LIO2
+  ros2 run tf2_ros tf2_echo camera_init body
+  # Point-LIO
+  ros2 run tf2_ros tf2_echo camera_init aft_mapped
   ```
 
 * **查看雷达点云频率**：
 
   ```bash
   ros2 topic hz /unilidar/cloud
-  ```
-
-* **查看雷达 IMU 频率**：
-
-  ```bash
-  ros2 topic hz /unilidar/imu
   ```
 
 * **RViz2 点云可视化** (需 X11 转发，如 MobaXterm)：
@@ -259,4 +350,4 @@ ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
   ```
 
 ---
-*本文件由 AI 在 2026-03-10 20:04 完成最后一次更新并校验。*
+*本文件由 AI 在 2026-03-11 02:06 完成最后一次更新并校验。*
