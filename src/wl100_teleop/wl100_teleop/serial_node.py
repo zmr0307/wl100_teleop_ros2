@@ -419,8 +419,9 @@ def main(args=None):
                 if hasattr(node, '_rx_thread') and node._rx_thread.is_alive():
                     node._rx_thread.join(timeout=1.0)
 
-                if rclpy.ok():
-                    node.get_logger().info('收到退出信号，准备停止节点...')
+                # 退出阶段使用 print 而非 rclpy logger
+                # 原因：Ctrl+C 后 rclpy 可能已 shutdown，logger 不可用
+                print('[wl100_serial_node] 收到退出信号，准备停止节点...')
 
                 # 紧急刹车（Rule 1：E-Stop 兜底）
                 if hasattr(node, 'serial_port') and node.serial_port and node.serial_port.is_open:
@@ -428,8 +429,7 @@ def main(args=None):
                         node.serial_port.write(STOP_FRAME)
                     except Exception:
                         pass
-                    if rclpy.ok():
-                        node.get_logger().info('安全刹车指令已下发，串口准备关闭')
+                    print('[wl100_serial_node] ✅ 安全刹车指令已下发，串口准备关闭')
                     node.serial_port.close()
             except Exception:
                 pass
