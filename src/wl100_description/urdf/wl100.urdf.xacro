@@ -1,68 +1,257 @@
 <?xml version="1.0"?>
-<!-- WL100 全向轮底盘 URDF 描述文件 -->
-<!-- TODO: 明天根据实际测量尺寸填写具体参数 -->
+<!-- WL100 全向轮底盘 URDF 描述文件 (方案A：基本几何体精确还原) -->
+<!-- 数据来源：官方产品尺寸图 + 规格参数表 -->
+<!-- 遵循规范：/home/nvidia/robot_ws/JETSON_RULES.md -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="wl100">
 
-  <!-- ==================== 尺寸参数（待测量填入）==================== -->
-  <!-- 底盘尺寸 (米) -->
-  <xacro:property name="chassis_length" value="0.30" />   <!-- TODO: 实测 -->
-  <xacro:property name="chassis_width"  value="0.30" />   <!-- TODO: 实测 -->
-  <xacro:property name="chassis_height" value="0.10" />   <!-- TODO: 实测 -->
+  <!-- ================================================================ -->
+  <!--                    底盘尺寸参数 (官方规格)                         -->
+  <!-- ================================================================ -->
+
+  <!-- 车体主体 (整机 L730×W500×H365mm，离地间隙 120mm) -->
+  <xacro:property name="chassis_length" value="0.73" />
+  <xacro:property name="chassis_width"  value="0.50" />
+  <xacro:property name="chassis_height" value="0.245" />    <!-- 365 - 120 = 245mm -->
+  <xacro:property name="ground_clearance" value="0.12" />   <!-- 离地间隙 120mm -->
+
+  <!-- 轮子参数 (8寸轮毂电机 / 200mm 实心轮胎) -->
+  <xacro:property name="wheel_radius" value="0.10" />       <!-- 200mm 直径 -->
+  <xacro:property name="wheel_width"  value="0.055" />      <!-- 实测值 55mm -->
+
+  <!-- 底盘运动学参数 -->
+  <xacro:property name="wheelbase"   value="0.48" />        <!-- 前后轮轴距 480mm -->
+  <xacro:property name="track_width" value="0.38" />        <!-- 左右轮距 380mm -->
+
+  <!-- 型材支架参数 (车顶安装导轨) -->
+  <xacro:property name="rail_length"  value="0.66" />       <!-- 实测值 660mm -->
+  <xacro:property name="rail_width"   value="0.025" />      <!-- 实测值 25mm -->
+  <xacro:property name="rail_height"  value="0.01" />       <!-- 实测值 10mm -->
+  <xacro:property name="rail_spacing" value="0.235" />      <!-- 来自尺寸图标注 -->
 
   <!-- 雷达安装位置 — 相对于 base_link 中心 (米) -->
-  <xacro:property name="lidar_x" value="0.0" />           <!-- TODO: 前后偏移 -->
-  <xacro:property name="lidar_y" value="0.0" />           <!-- TODO: 左右偏移 -->
-  <xacro:property name="lidar_z" value="0.15" />          <!-- TODO: 离底盘顶面高度 -->
+  <xacro:property name="lidar_x" value="0.0" />             <!-- TODO: 确认前后偏移 -->
+  <xacro:property name="lidar_y" value="0.0" />             <!-- TODO: 确认左右偏移 -->
+  <xacro:property name="lidar_z" value="0.05" />            <!-- TODO: 确认距车顶高度 -->
 
-  <!-- ==================== base_footprint ==================== -->
+  <!-- 整备质量 -->
+  <xacro:property name="chassis_mass" value="75.0" />       <!-- 含电池、电机 (kg) -->
+  <xacro:property name="wheel_mass"   value="3.0" />        <!-- 轮毂电机 (估算 kg) -->
+
+  <!-- ================================================================ -->
+  <!--                    计算衍生量                                     -->
+  <!-- ================================================================ -->
+
+  <!-- base_link 中心离地高度 = 离地间隙 + 车体高度的一半 -->
+  <xacro:property name="base_link_z" value="${ground_clearance + chassis_height / 2}" />
+
+  <!-- 轮子中心相对 base_link 的 Z 偏移 (轮子中心在 wheel_radius 高度) -->
+  <xacro:property name="wheel_z_offset" value="${wheel_radius - base_link_z}" />
+
+  <!-- ================================================================ -->
+  <!--                    颜色材质定义                                    -->
+  <!-- ================================================================ -->
+
+  <material name="white">
+    <color rgba="0.92 0.92 0.92 1.0"/>
+  </material>
+
+  <material name="dark_grey">
+    <color rgba="0.2 0.2 0.2 1.0"/>
+  </material>
+
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+
+  <material name="light_grey">
+    <color rgba="0.6 0.6 0.6 1.0"/>
+  </material>
+
+  <material name="green_led">
+    <color rgba="0.0 0.85 0.35 1.0"/>
+  </material>
+
+  <!-- ================================================================ -->
+  <!--                    轮子 xacro 宏 (避免重复代码)                    -->
+  <!-- ================================================================ -->
+
+  <xacro:macro name="wheel_link" params="name x_reflect y_reflect">
+    <link name="${name}">
+      <visual>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <!-- 圆柱体默认沿 Z 轴，绕 X 轴旋转 90° 使其横放（转轴沿 Y） -->
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <material name="dark_grey"/>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="${wheel_mass}"/>
+        <!-- 圆柱体惯性张量 (转轴沿 Z 时的公式，旋转后 URDF 会自动处理) -->
+        <inertia
+          ixx="${wheel_mass / 12.0 * (3.0 * wheel_radius * wheel_radius + wheel_width * wheel_width)}"
+          ixy="0.0" ixz="0.0"
+          iyy="${wheel_mass / 12.0 * (3.0 * wheel_radius * wheel_radius + wheel_width * wheel_width)}"
+          iyz="0.0"
+          izz="${wheel_mass / 2.0 * wheel_radius * wheel_radius}" />
+      </inertial>
+    </link>
+
+    <joint name="base_link_to_${name}" type="fixed">
+      <parent link="base_link"/>
+      <child link="${name}"/>
+      <origin xyz="${x_reflect * wheelbase / 2} ${y_reflect * track_width / 2} ${wheel_z_offset}" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ================================================================ -->
+  <!--                    base_footprint (地面投影点)                     -->
+  <!-- ================================================================ -->
+
   <link name="base_footprint"/>
 
   <joint name="base_footprint_to_base_link" type="fixed">
     <parent link="base_footprint"/>
     <child link="base_link"/>
-    <origin xyz="0 0 ${chassis_height/2}" rpy="0 0 0"/>
+    <origin xyz="0 0 ${base_link_z}" rpy="0 0 0"/>
   </joint>
 
-  <!-- ==================== base_link (底盘) ==================== -->
+  <!-- ================================================================ -->
+  <!--                    base_link (车体主体)                           -->
+  <!-- ================================================================ -->
+
   <link name="base_link">
     <visual>
       <geometry>
         <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
       </geometry>
-      <material name="dark_grey">
-        <color rgba="0.3 0.3 0.3 1.0"/>
-      </material>
+      <material name="white"/>
     </visual>
     <collision>
       <geometry>
         <box size="${chassis_length} ${chassis_width} ${chassis_height}"/>
       </geometry>
     </collision>
+    <inertial>
+      <mass value="${chassis_mass}"/>
+      <!-- 均匀密度长方体惯性张量 -->
+      <inertia
+        ixx="${chassis_mass / 12.0 * (chassis_width * chassis_width + chassis_height * chassis_height)}"
+        ixy="0.0" ixz="0.0"
+        iyy="${chassis_mass / 12.0 * (chassis_length * chassis_length + chassis_height * chassis_height)}"
+        iyz="0.0"
+        izz="${chassis_mass / 12.0 * (chassis_length * chassis_length + chassis_width * chassis_width)}" />
+    </inertial>
   </link>
 
-  <!-- ==================== LiDAR-L2 (激光雷达) ==================== -->
-  <joint name="base_link_to_lidar" type="fixed">
-    <parent link="base_link"/>
-    <child link="unilidar_lidar"/>
-    <origin xyz="${lidar_x} ${lidar_y} ${chassis_height/2 + lidar_z}" rpy="0 0 0"/>
-  </joint>
+  <!-- ================================================================ -->
+  <!--                    4 个轮子实例化                                  -->
+  <!-- ================================================================ -->
 
-  <link name="unilidar_lidar">
+  <xacro:wheel_link name="wheel_front_left"  x_reflect="1"  y_reflect="1"  />
+  <xacro:wheel_link name="wheel_front_right" x_reflect="1"  y_reflect="-1" />
+  <xacro:wheel_link name="wheel_rear_left"   x_reflect="-1" y_reflect="1"  />
+  <xacro:wheel_link name="wheel_rear_right"  x_reflect="-1" y_reflect="-1" />
+
+  <!-- ================================================================ -->
+  <!--                    型材支架 (车顶导轨，2 根)                       -->
+  <!-- ================================================================ -->
+
+  <link name="rail_left">
     <visual>
       <geometry>
-        <cylinder radius="0.0375" length="0.065"/>
+        <box size="${rail_length} ${rail_width} ${rail_height}"/>
       </geometry>
-      <material name="black">
-        <color rgba="0.1 0.1 0.1 1.0"/>
-      </material>
+      <material name="dark_grey"/>
     </visual>
   </link>
 
-  <!-- ==================== IMU (雷达内置) ==================== -->
+  <joint name="base_link_to_rail_left" type="fixed">
+    <parent link="base_link"/>
+    <child link="rail_left"/>
+    <origin xyz="0 ${rail_spacing / 2} ${chassis_height / 2 + rail_height / 2}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rail_right">
+    <visual>
+      <geometry>
+        <box size="${rail_length} ${rail_width} ${rail_height}"/>
+      </geometry>
+      <material name="dark_grey"/>
+    </visual>
+  </link>
+
+  <joint name="base_link_to_rail_right" type="fixed">
+    <parent link="base_link"/>
+    <child link="rail_right"/>
+    <origin xyz="0 ${-rail_spacing / 2} ${chassis_height / 2 + rail_height / 2}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!--           前方装饰灯带 (绿色 LED，标识车头方向)                     -->
+  <!-- ================================================================ -->
+
+  <link name="led_strip_front">
+    <visual>
+      <geometry>
+        <box size="0.005 0.20 0.02"/>
+      </geometry>
+      <material name="green_led"/>
+    </visual>
+  </link>
+
+  <joint name="base_link_to_led_front" type="fixed">
+    <parent link="base_link"/>
+    <child link="led_strip_front"/>
+    <origin xyz="${chassis_length / 2 + 0.003} 0 ${chassis_height * 0.1}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ================================================================ -->
+  <!--                    LiDAR-L2 (激光雷达，预留)                      -->
+  <!-- ================================================================ -->
+
+  <joint name="base_link_to_lidar" type="fixed">
+    <parent link="base_link"/>
+    <child link="unilidar_lidar"/>
+    <origin xyz="${lidar_x} ${lidar_y} ${chassis_height / 2 + rail_height + lidar_z}" rpy="0 0 0"/>
+  </joint>
+
+  <link name="unilidar_lidar">
+    <!-- 底座：圆柱 Φ75×24mm (原点在底面中心) -->
+    <visual>
+      <geometry>
+        <cylinder radius="0.0375" length="0.024"/>
+      </geometry>
+      <origin xyz="0 0 0.012" rpy="0 0 0"/>
+      <material name="black"/>
+    </visual>
+    <!-- 上半部(含罩壳与犄角)：近似为圆柱 Φ60×41mm -->
+    <visual>
+      <geometry>
+        <cylinder radius="0.030" length="0.041"/>
+      </geometry>
+      <origin xyz="0 0 0.0445" rpy="0 0 0"/>
+      <material name="dark_grey"/>
+    </visual>
+    <!-- 碰撞体：整体圆柱包围盒 Φ75×65mm -->
+    <collision>
+      <geometry>
+        <cylinder radius="0.0375" length="0.065"/>
+      </geometry>
+      <origin xyz="0 0 0.0325" rpy="0 0 0"/>
+    </collision>
+  </link>
+
+  <!-- ================================================================ -->
+  <!--               IMU (雷达内置，由 SDK 节点发布 TF)                   -->
+  <!-- ================================================================ -->
   <!-- IMU 与点云坐标系仅有微小平移偏差，由雷达 SDK 内部发布 TF -->
   <!-- 此处不单独定义 unilidar_imu link，由 SDK 节点负责 -->
-
-  <!-- ==================== 全向轮 (TODO: 后续补充) ==================== -->
-  <!-- wheel_front_left, wheel_front_right, wheel_back_left, wheel_back_right -->
 
 </robot>

@@ -1,22 +1,25 @@
 # WL100 底盘串口通信参数
-# TODO: 根据实际硬件确认参数值
+# 对应节点: wl100_serial_node (wl100_teleop/serial_node.py)
 
 /**:
   ros__parameters:
-    # 串口配置
-    port_name: "/dev/ttyCH341USB0"
-    baudrate: 115200
+    # ---- 串口配置 ----
+    port_name: "/dev/ttyCH341USB0"       # 串口设备路径
+    baudrate: 115200                      # 波特率 (bps)
 
-    # 速度安全限幅
-    max_linear_velocity: 0.2    # m/s
-    max_angular_velocity: 0.2   # rad/s
+    # ---- 速度安全限幅 (JETSON_RULES 第1条) ----
+    max_linear_velocity: 0.2              # 平移速度上限 (m/s)，绝对值
+    max_angular_velocity: 0.2             # 旋转速度上限 (rad/s)，绝对值
 
-    # 看门狗
-    watchdog_timeout: 0.5       # 秒
+    # ---- 断线重连 ----
+    reconnect_interval: 2.0               # 重连尝试间隔 (秒)
 
-    # 坐标系
-    odom_frame_id: "odom"
-    base_frame_id: "base_link"
+    # ---- 看门狗 ----
+    watchdog_timeout: 0.5                 # 回传超时阈值 (秒)，超时冻结运动指令
 
-    # 接收缓冲
-    rx_buffer_max: 256
+    # ---- 坐标系 (REP-105) ----
+    odom_frame_id: "odom"                 # 里程计父坐标系
+    base_frame_id: "base_link"            # 机器人基座坐标系
+
+    # ---- 接收缓冲 ----
+    rx_buffer_max: 256                    # 接收缓冲区字节上限

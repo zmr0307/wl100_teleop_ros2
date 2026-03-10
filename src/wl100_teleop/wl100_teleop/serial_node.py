@@ -44,8 +44,8 @@ class Wl100SerialNode(Node):
         self.declare_parameter('baudrate', 115200)
 
         # 安全限幅
-        self.declare_parameter('max_linear_vel', 0.2)
-        self.declare_parameter('max_angular_vel', 0.2)
+        self.declare_parameter('max_linear_velocity', 0.2)
+        self.declare_parameter('max_angular_velocity', 0.2)
 
         # 断线重连间隔（秒）
         self.declare_parameter('reconnect_interval', 2.0)
@@ -59,8 +59,8 @@ class Wl100SerialNode(Node):
         # ==================== 读取参数 ====================
         self.port_name = self.get_parameter('port_name').get_parameter_value().string_value
         self.baudrate = self.get_parameter('baudrate').get_parameter_value().integer_value
-        self.max_linear_vel = self.get_parameter('max_linear_vel').get_parameter_value().double_value
-        self.max_angular_vel = self.get_parameter('max_angular_vel').get_parameter_value().double_value
+        self.max_linear_vel = self.get_parameter('max_linear_velocity').get_parameter_value().double_value
+        self.max_angular_vel = self.get_parameter('max_angular_velocity').get_parameter_value().double_value
         self.reconnect_interval = self.get_parameter('reconnect_interval').get_parameter_value().double_value
         self.watchdog_timeout = self.get_parameter('watchdog_timeout').get_parameter_value().double_value
         self.odom_frame_id = self.get_parameter('odom_frame_id').get_parameter_value().string_value

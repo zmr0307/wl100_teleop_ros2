@@ -79,8 +79,10 @@
 ### 3.3 机器人描述包 (wl100_description)
 
 - **包类型**：`ament_cmake`
-- **URDF 模型**：`urdf/wl100.urdf.xacro`（xacro 格式，参数化尺寸，待实测填入）
-- **TF 树结构**：`base_footprint → base_link → unilidar_lidar`（全 fixed joint）
+- **URDF 模型**：`urdf/wl100.urdf.xacro`（xacro 格式，全参数化，官方规格数据 + 实测校准）
+- **建模精度**：基本几何体精确还原，底盘 box + 4 轮 cylinder + 型材支架 + 绿色灯带 + LiDAR 两段圆柱
+- **TF 树结构**：`base_footprint → base_link → {wheel×4, rail×2, led, unilidar_lidar}`（全 fixed joint）
+- **底盘尺寸**：L730×W500×H365mm，离地间隙 120mm，轴距 480mm，轮距 380mm，8 寸轮毂电机/200mm 实心轮胎
 - **launch**：`display.launch.py`（启动 `robot_state_publisher` 发布 TF）
 - **预留目录**：`meshes/`（3D 模型）、`rviz/`（RViz 预设配置）
 - **依赖**：`robot_state_publisher`、`xacro`、`joint_state_publisher`
@@ -136,17 +138,31 @@
   - 验证 `/unilidar/cloud` 点云 ~12Hz 稳定、`/unilidar/imu` ~246Hz 稳定。
   - RViz2 3D 点云可视化验证通过。
   - 节点 Ctrl+C 正常退出，无残留进程。
-- **工程化包结构建立 (2026-03-10 最新)**：
+- **工程化包结构建立 (2026-03-10)**：
   - 创建 `wl100_description` 包（URDF xacro 模板 + robot_state_publisher launch）。
   - 创建 `wl100_bringup` 包（统一 launch + 参数 YAML 配置文件）。
   - 两个包 `colcon build` 编译通过，零错误。xacro 解析验证通过。
   - 经两轮严格代码审查，修复 5 个 BUG（import 路径、YAML 命名空间、邮箱格式、跨工作区依赖、空目录安装）。
+- **参数体系统一化 (2026-03-10)**：
+  - 修复 `chassis_params.yaml` 与代码中参数名不匹配的 BUG（`max_linear_vel` → `max_linear_velocity`）。
+  - 补全 YAML 中缺失的 `reconnect_interval` 参数，完善全部注释。
+  - 参数清单在代码、YAML、文档三端完全对齐（共 9 项）。
+- **URDF 精确建模 (2026-03-10 最新)**：
+  - 基于官方产品尺寸图 + 规格参数表 + 实测数据，完成 WL100 底盘的精确 URDF 描述。
+  - 车体 box (0.73×0.50×0.245m) + 4 轮 cylinder (R0.10×W0.055m) + 型材支架 (0.66×0.025×0.01m) + 绿色灯带标识车头。
+  - LiDAR-L2 两段式建模：Φ75×24mm 圆柱底座 + Φ60×41mm 上半部，尺寸对齐官方 L2 机械尺寸图。
+  - 含惯性参数（chassis 75kg + wheel 3kg×4），xacro 解析 + colcon build 零警告。
 
-## 6. v3.0 新增 ROS2 参数清单
+## 6. 完整 ROS2 参数清单
 
 | 参数名 | 类型 | 默认值 | 用途 |
 |--------|------|--------|------|
-| `watchdog_timeout` | double | `0.5` | 回传超时阈值（秒） |
+| `port_name` | string | `/dev/ttyCH341USB0` | 串口设备路径 |
+| `baudrate` | int | `115200` | 串口波特率 (bps) |
+| `max_linear_velocity` | double | `0.2` | 平移速度限幅绝对值 (m/s) |
+| `max_angular_velocity` | double | `0.2` | 旋转速度限幅绝对值 (rad/s) |
+| `reconnect_interval` | double | `2.0` | 断线重连尝试间隔 (秒) |
+| `watchdog_timeout` | double | `0.5` | 回传超时阈值 (秒) |
 | `odom_frame_id` | string | `odom` | 里程计父坐标系 |
 | `base_frame_id` | string | `base_link` | 机器人基座坐标系 |
 | `rx_buffer_max` | int | `256` | 接收缓冲区字节上限 |
@@ -157,8 +173,8 @@
 - [x] **开发回传回路（里程计）**：v3.0 已实现 TYPE=0x01 里程计解析、积分与 /odom 发布。
 - [x] **代码解耦模块化**：v3.1 已将通信协议的收发解析逻辑、里程计推算逻辑从 ROS2 主节点中完全抽离。
 - [x] **LiDAR-L2 雷达驱动集成**：网络配置持久化 + SDK 编译 + 点云/IMU 话题验证 + RViz2 可视化确认。
-- [ ] **雷达 TF 对接**：发布 `base_link → unilidar_lidar` 静态 TF，将雷达坐标系连接到底盘坐标系。
-- [ ] **统一 Launch 文件**：将底盘串口节点 + 雷达节点整合到一个 launch 文件中，一键启动。
+- [x] **雷达 TF 对接**：URDF 中已定义 `base_link → unilidar_lidar` fixed joint，`robot_state_publisher` 启动后自动发布。雷达安装位置 lidar_x/y/z 待实测确认后填入 xacro 参数。
+- [ ] **统一 Launch 文件验证**：`robot.launch.py` 已编写，需实际启动验证全链路（底盘 + 雷达 + URDF）。
 - [ ] **回传实车联调验证**：需连接 STM32 实车，验证 /odom 数据与底盘真实运动的方向和数值一致性。
 - [ ] **回传扩展：电池状态 (TYPE=0x02)**：解析 STM32 上报的 SOC、电压、电流、故障码。
 - [ ] **物理压力测试**：验证在长时间运行和频繁插拔下的稳定性。
@@ -243,4 +259,4 @@ ros2 run unitree_lidar_ros2 unitree_lidar_ros2_node --ros-args \
   ```
 
 ---
-*本文件由 AI 在 2026-03-10 完成最后一次更新并校验。*
+*本文件由 AI 在 2026-03-10 20:04 完成最后一次更新并校验。*
