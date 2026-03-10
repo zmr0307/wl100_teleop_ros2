@@ -4,3 +4,7 @@ log/
 .vscode/
 __pycache__/
 *.pyc
+
+# 大文件不推送 GitHub
+src/point_lio_ros2/image/*.gif
+src/FAST_LIO_ROS2/PCD/
