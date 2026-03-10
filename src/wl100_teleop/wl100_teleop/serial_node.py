@@ -53,7 +53,7 @@ class Wl100SerialNode(Node):
         # 回传与里程计参数
         self.declare_parameter('watchdog_timeout', 0.5)
         self.declare_parameter('odom_frame_id', 'odom')
-        self.declare_parameter('base_frame_id', 'base_link')
+        self.declare_parameter('base_frame_id', 'base_footprint')
         self.declare_parameter('rx_buffer_max', 256)
 
         # ==================== 读取参数 ====================
@@ -361,7 +361,7 @@ class Wl100SerialNode(Node):
         )
         self._odom_pub.publish(odom_msg)
 
-        # 广播 TF: odom -> base_link
+        # 广播 TF: odom -> base_footprint
         tf_msg = self._odom_integrator.build_tf_msg(
             stamp, self.odom_frame_id, self.base_frame_id
         )

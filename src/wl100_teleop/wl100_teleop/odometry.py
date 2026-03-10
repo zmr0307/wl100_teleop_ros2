@@ -5,7 +5,7 @@ WL100 里程计积分与消息构建模块
 
 坐标系: 严格遵循 REP-105 标准
   - 父坐标系: odom (世界固定)
-  - 子坐标系: base_link (机器人体固定)
+  - 子坐标系: base_footprint (机器人地面投影)
 
 运动学模型: 全向底盘死区推算 (Dead Reckoning)
   - delta_x     = (Vx·cosθ - Vy·sinθ) · dt
@@ -27,8 +27,8 @@ class OdometryIntegrator:
     使用方法:
         integrator = OdometryIntegrator()
         integrator.update(vx, vy, vz, dt)
-        odom_msg = integrator.build_odom_msg(stamp, 'odom', 'base_link')
-        tf_msg = integrator.build_tf_msg(stamp, 'odom', 'base_link')
+        odom_msg = integrator.build_odom_msg(stamp, 'odom', 'base_footprint')
+        tf_msg = integrator.build_tf_msg(stamp, 'odom', 'base_footprint')
     """
 
     def __init__(self):
@@ -90,7 +90,7 @@ class OdometryIntegrator:
         Args:
             stamp: ROS 时间戳 (builtin_interfaces/Time)
             odom_frame_id: 里程计父坐标系名 (如 'odom')
-            base_frame_id: 机器人基座坐标系名 (如 'base_link')
+            base_frame_id: 里程计子坐标系名 (如 'base_footprint')
 
         Returns:
             Odometry 消息
@@ -123,12 +123,12 @@ class OdometryIntegrator:
 
     def build_tf_msg(self, stamp, odom_frame_id, base_frame_id):
         """
-        构建 odom -> base_link 的 TF 变换消息
+        构建 odom -> base_footprint 的 TF 变换消息
 
         Args:
             stamp: ROS 时间戳 (builtin_interfaces/Time)
             odom_frame_id: 父坐标系名
-            base_frame_id: 子坐标系名
+            base_frame_id: 子坐标系名 (如 'base_footprint')
 
         Returns:
             TransformStamped 消息

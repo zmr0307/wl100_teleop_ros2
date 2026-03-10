@@ -116,7 +116,7 @@
   - `Byte 3~8`: Vx, Vy, Vz，单位放大 1000 倍，**大端序 int16**。
   - `Byte 9`: XOR 校验和（Byte 0~8 共 9 字节累积异或）。
 - **Jetson 端解析方式**：后台接收线程滑窗搜帧 + 三道校验（帧头/帧尾/XOR）
-- **发布话题**：`/odom` (`nav_msgs/msg/Odometry`) + TF 广播 (`odom` → `base_link`)
+- **发布话题**：`/odom` (`nav_msgs/msg/Odometry`) + TF 广播 (`odom` → `base_footprint`)
 
 - **硬件连线状态 (2026-03-08 更新)**：
   - 加载了 WCH 原厂 CH341 驱动，USB-TTL 设备名从标准的 `/dev/ttyUSB0` 变为 **`/dev/ttyCH341USB0`** (或 USB1)。
@@ -164,7 +164,7 @@
 | `reconnect_interval` | double | `2.0` | 断线重连尝试间隔 (秒) |
 | `watchdog_timeout` | double | `0.5` | 回传超时阈值 (秒) |
 | `odom_frame_id` | string | `odom` | 里程计父坐标系 |
-| `base_frame_id` | string | `base_link` | 机器人基座坐标系 |
+| `base_frame_id` | string | `base_footprint` | 里程计子坐标系 (REP-105) |
 | `rx_buffer_max` | int | `256` | 接收缓冲区字节上限 |
 
 ## 7. 下一步行动点（TODO）

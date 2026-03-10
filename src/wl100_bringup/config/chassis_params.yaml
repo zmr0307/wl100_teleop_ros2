@@ -19,7 +19,7 @@
 
     # ---- 坐标系 (REP-105) ----
     odom_frame_id: "odom"                 # 里程计父坐标系
-    base_frame_id: "base_link"            # 机器人基座坐标系
+    base_frame_id: "base_footprint"            # 里程计子坐标系 (REP-105: odom → base_footprint)
 
     # ---- 接收缓冲 ----
     rx_buffer_max: 256                    # 接收缓冲区字节上限
