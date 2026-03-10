@@ -29,7 +29,7 @@
             fov_degree:    360.0
             det_range:     30.0          # L2 max range 30m
             extrinsic_est_en:  false
-            extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
+            extrinsic_T: [ 0.007698, 0.014655, -0.00667 ]  # LiDAR pose in IMU frame (官方标定值)
             extrinsic_R: [1., 0., 0.,
                         0., 1., 0.,
                         0., 0., 1.]
