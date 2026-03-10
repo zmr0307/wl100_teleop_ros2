@@ -1,0 +1,46 @@
+/**:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 3
+        max_iteration: 3
+        filter_size_surf: 0.5
+        filter_size_map: 0.5
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: false
+        map_file_path: "/home/nvidia/robot_ws/PCD/fastlio_scans.pcd"
+
+        common:
+            lid_topic:  "/unilidar/cloud"
+            imu_topic:  "/unilidar/imu"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        preprocess:
+            lidar_type: 2                # 2 for Velodyne-compatible (Unitree L2 uses standard PointCloud2 with time+ring)
+            scan_line: 18                # L2 has 18 scan lines
+            timestamp_unit: 0            # 0-second (L2 timestamps are in seconds)
+            blind: 0.5
+
+        mapping:
+            acc_cov: 1.0              # 折中值：减少抖动但不丢重力方向
+            gyr_cov: 0.3              # 适度增大
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree:    360.0
+            det_range:     30.0          # L2 max range 30m
+            extrinsic_est_en:  false
+            extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
+            extrinsic_R: [1., 0., 0.,
+                        0., 1., 0.,
+                        0., 0., 1.]
+
+        publish:
+            path_en:  true
+            scan_publish_en:  true
+            dense_publish_en: true
+            scan_bodyframe_pub_en: true
+            map_en: true
+
+        pcd_save:
+            pcd_save_en: true
+            interval: -1
